@@ -1,3 +1,9 @@
+> **This is a fork** adding on-screen LCD overlays for MIDI synth emulators
+> (Roland Sound Canvas, MT-32/CM-32L) composited directly into the game
+> canvas. See [LCD-OVERLAYS.md](../LCD-OVERLAYS.md) for setup. Everything
+> below documents the unmodified upstream CI workflows, not the fork's own
+> content.
+
 # GitHub CI workflows
 
 This directory holds the GitHub Actions configuration for DOSBox Staging:
