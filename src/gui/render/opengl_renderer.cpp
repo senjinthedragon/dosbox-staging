@@ -10,7 +10,9 @@
 #include "private/shader_manager.h"
 
 #include "capture/capture.h"
+#include "config/setup.h"
 #include "dosbox_config.h"
+#include "midi/midi.h"
 #include "misc/support.h"
 #include "misc/video.h"
 #include "utils/checks.h"
@@ -23,7 +25,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 
-#if defined(MACOSX) 
+#if defined(MACOSX)
 #include "macos_colorspace.h"
 #endif
 
@@ -101,32 +103,32 @@ SDL_Window* OpenGlRenderer::CreateSdlWindow(const int x, const int y,
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y);
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, width);
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
-	
+
 	// For window flags you should use separate window creation properties,
 	// but for easier migration from SDL2 you can use the following:
 	SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, flags);
 	auto window = SDL_CreateWindowWithProperties(props);
 	SDL_DestroyProperties(props);
 
-#if defined(MACOSX) 
+#if defined(MACOSX)
 	// From "Best Practices for Color Management in OS X and iOS", chapter
 	// "Non-Color Managed Frameworks, OpenGL - Explicit Color Management
 	// Example":
-	// 
+	//
 	//   OpenGL is not color managed. As a consequence, it might require
 	//   additional effort to devise solutions to specific color problems
 	//   you may encounter when using it. The fundamental problem is OpenGL
 	//   has one set of assumptions, and the display buffer has another.
-	// 
+	//
 	// Ref:
 	// https://developer.apple.com/library/archive/technotes/tn2313/_index.html#//apple_ref/doc/uid/DTS40014694-CH1-NONCOLORMANAGEDFRAMEWORKS-OPENGL___EXPLICIT_COLOR_MANAGEMENT_EXAMPLE
-	// 
+	//
 	// SDL3 tags the window's colorspace with sRGBColorSpace. This is
 	// hardcoded, but what we want is to use the Display P3 colour space
 	// instead internally, tag the window with displayP3ColorSpace, then let
 	// the system-wide colour management feature of macOS do the rest (i.e.,
-	// converting the Display P3 image data to whatever colour space is set in
-	// the system settings).
+	// converting the Display P3 image data to whatever colour space is set
+	// in the system settings).
 	setDisplayP3ColorSpace(window);
 #endif
 
@@ -171,7 +173,7 @@ bool OpenGlRenderer::InitRenderer()
 	max_texture_size_px = size;
 
 	LOG_INFO("OPENGL: Version: %s, renderer: %s, GLSL version: %s, vendor: %s",
-			 safe_gl_get_string(GL_VERSION, "unknown"),
+	         safe_gl_get_string(GL_VERSION, "unknown"),
 	         safe_gl_get_string(GL_RENDERER, "unknown"),
 	         safe_gl_get_string(GL_SHADING_LANGUAGE_VERSION, "unknown"),
 	         safe_gl_get_string(GL_VENDOR, "unknown"));
@@ -413,7 +415,7 @@ void OpenGlRenderer::RecreateInputTexture()
 	// the frame.
 	const auto pitch_pixels = input_texture.width;
 	const auto num_pixels   = static_cast<size_t>(pitch_pixels) *
-	                        input_texture.height;
+	                          input_texture.height;
 
 	curr_framebuf.resize(num_pixels);
 	last_framebuf.resize(num_pixels);
@@ -476,6 +478,32 @@ void OpenGlRenderer::PrepareFrame()
 void OpenGlRenderer::PresentFrame()
 {
 	shader_pipeline->Render(vao);
+
+	if (get_section("soundcanvas")->GetBool("soundcanvas_lcd_overlay")) {
+		uint32_t lcd_width         = 0;
+		uint32_t lcd_height        = 0;
+		uint32_t lcd_row_stride_px = 0;
+		const uint32_t* lcd_pixels = nullptr;
+
+		if (MIDI_GetActiveSoundCanvasLcdFramebuffer(
+		            lcd_width, lcd_height, lcd_row_stride_px, lcd_pixels)) {
+			if (!lcd_overlay) {
+				lcd_overlay = std::make_unique<LcdOverlay>();
+			}
+
+			const auto opacity_percent =
+			        get_section("soundcanvas")->GetInt("soundcanvas_lcd_overlay_opacity");
+			const auto opacity = static_cast<float>(opacity_percent) /
+			                     100.0f;
+
+			lcd_overlay->Render(lcd_pixels,
+			                    lcd_width,
+			                    lcd_height,
+			                    lcd_row_stride_px,
+			                    GetCanvasSizeInPixels(),
+			                    opacity);
+		}
+	}
 
 	// Optionally capture frame
 	if (CAPTURE_IsCapturingPostRenderImage()) {
