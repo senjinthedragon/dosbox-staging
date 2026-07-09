@@ -376,3 +376,9 @@ jobs:
             LCD overlays fork build. Includes the senjinthedragon/Nuked-SC55-CLAP
             plugin (with the LCD framebuffer extension) bundled in `plugins/`.
             See LCD-OVERLAYS.md for setup.
+
+            **Platform testing status:** Windows x64 - not yet manually
+            tested by the fork maintainer. CI builds and packages it
+            successfully, and the underlying code has no Windows-specific
+            gaps, but the LCD overlay itself hasn't been visually confirmed
+            on real Windows hardware. Please report any issues.

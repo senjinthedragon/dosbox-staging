@@ -257,3 +257,10 @@ jobs:
             LCD overlays fork build. Includes the senjinthedragon/Nuked-SC55-CLAP
             plugin (with the LCD framebuffer extension) bundled in the app's
             PlugIns directory. See LCD-OVERLAYS.md for setup.
+
+            **Platform testing status:** macOS - not tested at all by the
+            fork maintainer (no Mac available). CI builds and packages it
+            successfully and nothing in the code is macOS-specific to this
+            fork's changes, but the LCD overlay itself has never been
+            visually confirmed on real macOS hardware. Please report any
+            issues.

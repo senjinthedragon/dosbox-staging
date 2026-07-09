@@ -343,6 +343,9 @@ jobs:
             plugin (with the LCD framebuffer extension) bundled in `plugins/`.
             See LCD-OVERLAYS.md for setup.
 
+            **Platform testing status:** Linux x86_64 - tested by the fork
+            maintainer with real games. Please report any issues.
+
       - name:  Report repo cache usage
         if:    always()
         shell: bash
