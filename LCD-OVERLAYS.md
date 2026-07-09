@@ -21,6 +21,18 @@ Currently implemented:
   each frame into a small dot-matrix bitmap using a hand-authored font and
   rendered through the same overlay machinery as Sound Canvas.
 
+## Downloads
+
+Prebuilt binaries (Linux/Windows/macOS) are published to this repo's
+[Releases](https://github.com/senjinthedragon/dosbox-staging/releases) page,
+with the [senjinthedragon/Nuked-SC55-CLAP](https://github.com/senjinthedragon/Nuked-SC55-CLAP)
+plugin already bundled in `plugins/` (or the macOS app's `PlugIns`
+directory) - no separate build or manual plugin install needed for Sound
+Canvas. This is a manually-triggered release process (not automatic on
+every commit), so it may lag behind the latest source. If no release is
+published yet, or you want the very latest changes, build from source
+per the instructions below.
+
 ## Setup
 
 ### Sound Canvas
@@ -29,6 +41,12 @@ Currently implemented:
    (`lcd-framebuffer` branch) and copy the resulting `.clap` into your DOSBox
    config directory's `plugins/` folder (e.g. `~/.config/dosbox/plugins/` on
    Linux).
+
+   If you already have the regular (upstream) Nuked-SC55-CLAP plugin
+   installed, `soundcanvas_lcd_overlay = on` won't do anything visible or
+   throw an error - it just silently has no effect, since the stock plugin
+   doesn't expose the LCD framebuffer extension this fork adds. You need
+   this fork's build specifically for the overlay to show up.
 2. Place SC-55 ROMs in `soundcanvas-roms/` per the [upstream Sound Canvas
    docs](website/docs/0.83/manual/sound/sound-devices/sound-canvas.md).
 3. In your DOSBox config:

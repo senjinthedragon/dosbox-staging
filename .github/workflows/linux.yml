@@ -20,6 +20,13 @@ on:
       - 'licenses/**'
       - 'website/**'
 
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish this platform's release build under (leave empty to just build)"
+        required: false
+        type: string
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -195,7 +202,9 @@ jobs:
     name:    Release build
     runs-on: ubuntu-24.04
     needs:   generate_release_notes
-    if:      github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    if:      github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -282,12 +291,21 @@ jobs:
 
       - name:  Inject Nuked-SC55-CLAP plugin
         run: |
-          set -x
-          ZIP_NAME=Nuked-SC55-CLAP-linux-x86_64-$NUKED_SC55_CLAP_VERSION.zip
+          set -xe
+          # This fork requires senjinthedragon/Nuked-SC55-CLAP's
+          # `lcd-framebuffer` build specifically -- the LCD overlay
+          # extension isn't in upstream johnnovak/Nuked-SC55-CLAP. Resolves
+          # the latest release tag dynamically so this doesn't need manual
+          # version bumps every time a new plugin build is published.
+          NUKED_SC55_CLAP_TAG=$(curl -fsSL \
+            https://api.github.com/repos/senjinthedragon/Nuked-SC55-CLAP/releases/latest \
+            | grep -oP '"tag_name":\s*"\K[^"]+')
+
+          ZIP_NAME=Nuked-SC55-CLAP-linux-x86_64-$NUKED_SC55_CLAP_TAG.zip
 
           # Retry on transient GitHub release-asset CDN flakes.
           curl -fL --retry 5 --retry-all-errors --retry-delay 10 \
-            https://github.com/johnnovak/Nuked-SC55-CLAP/releases/download/$NUKED_SC55_CLAP_VERSION/$ZIP_NAME -o $ZIP_NAME
+            https://github.com/senjinthedragon/Nuked-SC55-CLAP/releases/download/$NUKED_SC55_CLAP_TAG/$ZIP_NAME -o $ZIP_NAME
           unzip $ZIP_NAME -d nuked-sc55-clap
 
           PLUGINS_DIR="dosbox-staging-linux-x86_64-$DOSBOX_VERSION_AND_HASH/plugins"
@@ -312,6 +330,18 @@ jobs:
           name: dosbox-staging-linux-x86_64-${{ env.DOSBOX_VERSION_AND_HASH }}.tar.xz
           path: dosbox-staging-linux-x86_64-${{ env.DOSBOX_VERSION_AND_HASH }}.tar.xz
           archive: false
+
+      - name: Publish release
+        if:   github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_tag }}
+          files: dosbox-staging-linux-x86_64-${{ env.DOSBOX_VERSION_AND_HASH }}.tar.xz
+          body: |
+            LCD overlays fork build. Includes the senjinthedragon/Nuked-SC55-CLAP
+            plugin (with the LCD framebuffer extension) bundled in `plugins/`.
+            See LCD-OVERLAYS.md for setup.
 
       - name:  Report repo cache usage
         if:    always()
