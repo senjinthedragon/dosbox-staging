@@ -253,6 +253,17 @@ void FSYNTH_Init();
 
 #if C_MT32EMU
 void MT32_AddConfigSection(const ConfigPtr& conf);
+
+// Fetches the current 20-char LCD content (see
+// MT32Emu::Service::getDisplayState) from the currently active MIDI
+// device, if it's MT-32. `buf` must point to at least 21 bytes (20 chars
+// + null terminator). The buffer may contain raw bytes 0x01/0x02 outside
+// the printable ASCII range -- these are the hardware's custom "part
+// active"/"pipe" LCD glyphs, not garbage; see mt32_lcd_rasterizer.h for
+// the byte-to-glyph mapping. Returns false if the active device isn't
+// MT-32. Must only be called from a single consistent thread (the
+// video/render thread), never the audio thread.
+bool MIDI_GetActiveMt32DisplayState(char* buf);
 #endif
 
 void SOUNDCANVAS_AddConfigSection(const ConfigPtr& conf);

@@ -60,6 +60,11 @@ public:
 	ModelAndDir GetModelAndDir();
 	mt32emu_rom_info GetRomInfo();
 
+	// Fetches the current 20-char LCD content (see
+	// MT32Emu::Service::getDisplayState). `buf` must point to at least 21
+	// bytes. Thread-safe (takes service_mutex).
+	bool GetDisplayState(char* buf);
+
 private:
 	void MixerCallback(const int requested_audio_frames);
 	void ProcessWorkFromFifo();

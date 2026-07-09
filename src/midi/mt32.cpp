@@ -403,6 +403,27 @@ static void init_mt32_config_settings(SectionProp& sec_prop)
 	        "\n"
 	        "  off:       Don't filter the output (default).\n"
 	        "  <custom>:  Custom filter definition; see 'sb_filter' for details.");
+
+	auto* bool_prop = sec_prop.AddBool("mt32_lcd_overlay", when_idle, false);
+	bool_prop->SetHelp(
+	        "Show the Roland MT-32/CM-32L LCD status panel as a small overlay in\n"
+	        "the top-right corner of the screen ('off' by default). Only supported\n"
+	        "with the OpenGL/shader render backend.");
+
+	constexpr auto DefaultOpacityPercent = 85;
+	constexpr auto MinOpacityPercent     = 0;
+	constexpr auto MaxOpacityPercent     = 100;
+
+	auto* int_prop = sec_prop.AddInt("mt32_lcd_overlay_opacity",
+	                                 when_idle,
+	                                 DefaultOpacityPercent);
+	int_prop->SetMinMax(MinOpacityPercent, MaxOpacityPercent);
+	int_prop->SetHelp(
+	        format_str("Opacity of the LCD overlay as a percentage (%d by default), from %d\n"
+	                   "(invisible) to %d (fully opaque).",
+	                   DefaultOpacityPercent,
+	                   MinOpacityPercent,
+	                   MaxOpacityPercent));
 }
 
 static void register_mt32_text_messages()
@@ -965,6 +986,26 @@ mt32emu_rom_info MidiDeviceMt32::GetRomInfo()
 	return rom_info;
 }
 
+bool MidiDeviceMt32::GetDisplayState(char* buf)
+{
+	const std::lock_guard<std::mutex> lock(service_mutex);
+	if (!service) {
+		return false;
+	}
+	return service->getDisplayState(buf, false);
+}
+
+bool MIDI_GetActiveMt32DisplayState(char* buf)
+{
+	const auto device = dynamic_cast<MidiDeviceMt32*>(MIDI_GetCurrentDevice());
+
+	if (!device) {
+		return false;
+	}
+
+	return device->GetDisplayState(buf);
+}
+
 // Prints a table of directories and supported models. Models are printed
 // across the first row and directories are printed down the left column.
 // Long directories are truncated and model versions are used to avoid text
@@ -1026,7 +1067,7 @@ void MT32_ListDevices(MidiDeviceMt32* device, MoreOutputStrings& output)
 
 		const auto active_prefix = (is_active ? "*" : " ");
 		const auto model_string  = format_str(
-                        "%s%s%s%s", color, active_prefix, display_name, reset);
+		        "%s%s%s%s", color, active_prefix, display_name, reset);
 
 		return convert_ansi_markup(model_string);
 	};
