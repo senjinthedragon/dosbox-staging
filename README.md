@@ -1,5 +1,10 @@
 # DOSBox Staging
 
+> **This is a fork** adding on-screen LCD overlays for MIDI synth emulators
+> (Roland Sound Canvas so far) composited directly into the game canvas. See
+> [LCD-OVERLAYS.md](LCD-OVERLAYS.md) for setup. Everything below is the
+> unmodified upstream README.
+
 ![GPL-2.0-or-later][gpl-badge]
 [![Chat][discord-badge]][discord]
 
