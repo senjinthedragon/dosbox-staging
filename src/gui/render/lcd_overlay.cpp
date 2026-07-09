@@ -14,13 +14,6 @@ CHECK_NARROWING();
 
 namespace {
 
-// Native Roland SC-55 LCD panel resolution (see Nuked-SC55-CLAP's
-// lcd.cpp:163-172) -- preserve this aspect ratio so the overlay isn't
-// stretched.
-constexpr float LcdNativeWidthPx  = 741.0f;
-constexpr float LcdNativeHeightPx = 268.0f;
-constexpr float LcdAspectRatio    = LcdNativeWidthPx / LcdNativeHeightPx;
-
 constexpr float OverlayWidthFraction  = 0.22f;
 constexpr float OverlayMaxWidthPx     = 480.0f;
 constexpr float OverlayMarginFraction = 0.02f;
@@ -66,6 +59,10 @@ void main()
 // clang-format on
 
 } // namespace
+
+LcdOverlay::LcdOverlay(bool _use_nearest_filtering)
+        : use_nearest_filtering(_use_nearest_filtering)
+{}
 
 LcdOverlay::~LcdOverlay()
 {
@@ -123,10 +120,12 @@ void LcdOverlay::EnsureInitialised()
 
 	glBindVertexArray(0);
 
+	const GLint filter_mode = use_nearest_filtering ? GL_NEAREST : GL_LINEAR;
+
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter_mode);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter_mode);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -176,9 +175,17 @@ void LcdOverlay::UpdateVertexData(const DosBox::Rect& canvas_size_px)
 	const auto canvas_w = canvas_size_px.w;
 	const auto canvas_h = canvas_size_px.h;
 
+	// Aspect ratio comes from whatever content was last uploaded via
+	// UpdateTexture() (called before this in Render()) -- not hardcoded,
+	// since this class serves multiple LCD content sources with very
+	// different native aspect ratios (e.g. Sound Canvas's ~2.77:1 panel vs.
+	// MT-32's ~20:1 single-line text strip).
+	const auto content_aspect_ratio = static_cast<float>(texture_width) /
+	                                  static_cast<float>(texture_height);
+
 	const auto overlay_w_px = std::min(canvas_w * OverlayWidthFraction,
 	                                   OverlayMaxWidthPx);
-	const auto overlay_h_px = overlay_w_px / LcdAspectRatio;
+	const auto overlay_h_px = overlay_w_px / content_aspect_ratio;
 
 	const auto margin_px = canvas_w * OverlayMarginFraction;
 

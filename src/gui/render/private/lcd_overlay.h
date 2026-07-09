@@ -16,13 +16,19 @@
 
 #include "glad/gl.h"
 
-// Renders the Roland Sound Canvas LCD status panel as a small, fixed,
-// non-interactive overlay composited into the top-right corner of the game
-// canvas, right after the shader pipeline's final pass. See the
-// `soundcanvas_lcd_overlay` config setting.
+// Renders a synth's LCD status panel as a small, fixed, non-interactive
+// overlay composited into the top-right corner of the game canvas, right
+// after the shader pipeline's final pass. Content-agnostic -- used for both
+// the Roland Sound Canvas LCD (see `soundcanvas_lcd_overlay`) and the
+// Roland MT-32/CM-32L LCD (see `mt32_lcd_overlay`); aspect ratio is derived
+// from whatever `width`/`height` is passed to `Render()`, not hardcoded.
 class LcdOverlay {
 public:
-	LcdOverlay() = default;
+	// `use_nearest_filtering` should be true for low-resolution/pixel-art
+	// sources (e.g. the rasterized MT-32 text display) to keep a crisp,
+	// blocky look instead of blurring on upscale; false (bilinear) suits
+	// the higher-resolution Sound Canvas pixel buffer.
+	explicit LcdOverlay(bool use_nearest_filtering = false);
 	~LcdOverlay();
 
 	// prevent copying
@@ -47,7 +53,8 @@ private:
 	                   const uint32_t height, const uint32_t row_stride_pixels);
 	void UpdateVertexData(const DosBox::Rect& canvas_size_px);
 
-	bool is_initialised = false;
+	bool is_initialised        = false;
+	bool use_nearest_filtering = false;
 
 	Shader shader = {};
 
