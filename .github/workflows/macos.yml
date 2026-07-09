@@ -209,7 +209,7 @@ jobs:
           # version bumps every time a new plugin build is published.
           NUKED_SC55_CLAP_TAG=$(curl -fsSL \
             https://api.github.com/repos/senjinthedragon/Nuked-SC55-CLAP/releases/latest \
-            | grep -oP '"tag_name":\s*"\K[^"]+')
+            | jq -r .tag_name)
 
           ZIP_NAME=Nuked-SC55-CLAP-macOS-$NUKED_SC55_CLAP_TAG.zip
 
