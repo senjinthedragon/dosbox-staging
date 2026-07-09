@@ -43,16 +43,21 @@ out vec4 frag_color;
 
 uniform sampler2D u_texture;
 uniform float u_opacity;
+uniform bool u_use_source_alpha;
 
 void main()
 {
-	// Source has no real alpha channel (lcd.color1/color2 are plain 24-bit
-	// RGB literals with no alpha bits set) -- the reference implementation
-	// uploads via SDL_PIXELFORMAT_BGR888, which has no alpha component and
-	// always treats content as fully opaque. Do the same here; only
-	// u_opacity controls the overlay's overall transparency.
 	vec4 c = texture(u_texture, v_tex_coord);
-	frag_color = vec4(c.rgb, u_opacity);
+
+	// Most sources (Sound Canvas) have no real alpha channel -- its
+	// upstream pixel buffer's colours are plain 24-bit RGB literals with
+	// no alpha bits ever set, and the reference implementation uploads
+	// via SDL_PIXELFORMAT_BGR888, which has no alpha component at all and
+	// always treats content as fully opaque. Sources that deliberately
+	// encode real per-pixel transparency (e.g. the MT-32 rasterizer's
+	// rounded-corner cutout) opt in via u_use_source_alpha.
+	float src_alpha = u_use_source_alpha ? c.a : 1.0;
+	frag_color = vec4(c.rgb, src_alpha * u_opacity);
 }
 
 #endif
@@ -61,8 +66,9 @@ void main()
 
 } // namespace
 
-LcdOverlay::LcdOverlay(bool _use_nearest_filtering)
-        : use_nearest_filtering(_use_nearest_filtering)
+LcdOverlay::LcdOverlay(bool _use_nearest_filtering, bool _use_source_alpha)
+        : use_nearest_filtering(_use_nearest_filtering),
+          use_source_alpha(_use_source_alpha)
 {}
 
 LcdOverlay::~LcdOverlay()
@@ -176,40 +182,23 @@ void LcdOverlay::UpdateVertexData(const DosBox::Rect& canvas_size_px)
 	const auto canvas_w = canvas_size_px.w;
 	const auto canvas_h = canvas_size_px.h;
 
-	const auto target_w_px = std::min(canvas_w * OverlayWidthFraction,
-	                                  OverlayMaxWidthPx);
-
 	float overlay_w_px = 0.0f;
 	float overlay_h_px = 0.0f;
 
 	if (use_nearest_filtering) {
-		// Scale by an integer multiple of the source texture's size so
-		// every source pixel maps to a uniform whole-pixel block on
-		// screen -- the same principle as DOSBox's own
-		// `integer_scaling` setting for its main canvas. A non-integer
-		// scale factor causes GL_NEAREST to duplicate some source pixel
-		// columns/rows more than others (e.g. 3x here, 4x there), which
-		// reads as blur/unevenness even though no texture interpolation
-		// is actually happening -- most visible on small, fine-detail
-		// sources like the rasterized MT-32 text, where each source
-		// pixel is only a few screen pixels wide to begin with.
-		//
-		// Only applies to nearest-filtered content: bilinear-filtered
-		// content (e.g. Sound Canvas's much higher-resolution panel,
-		// which gets downscaled to fit rather than upscaled) already
-		// looks smooth at any ratio, and forcing an integer scale there
-		// would force it to its full native size whenever that's larger
-		// than the target width.
-		const auto pixel_scale = std::max(
-		        1,
-		        static_cast<int>(target_w_px /
-		                         static_cast<float>(texture_width)));
-
-		overlay_w_px = static_cast<float>(texture_width) *
-		               static_cast<float>(pixel_scale);
-		overlay_h_px = static_cast<float>(texture_height) *
-		               static_cast<float>(pixel_scale);
+		// Pure 1:1 -- no scaling at all. Nearest-filtered content (the
+		// rasterized MT-32 text) is expected to already be baked out at
+		// its final on-screen size by the caller (dot size and the
+		// fixed 1-pixel gap between dots are both real screen-pixel
+		// quantities set via config, not something to be scaled here).
+		// Any further integer upscale would scale that fixed gap right
+		// along with everything else and defeat the point of it being
+		// fixed.
+		overlay_w_px = static_cast<float>(texture_width);
+		overlay_h_px = static_cast<float>(texture_height);
 	} else {
+		const auto target_w_px = std::min(canvas_w * OverlayWidthFraction,
+		                                  OverlayMaxWidthPx);
 		const auto content_aspect_ratio = static_cast<float>(texture_width) /
 		                                  static_cast<float>(texture_height);
 
@@ -290,6 +279,7 @@ void LcdOverlay::Render(const uint32_t* pixels, const uint32_t width,
 	glBindTexture(GL_TEXTURE_2D, texture);
 	shader.SetUniform1i("u_texture", 0);
 	shader.SetUniform1f("u_opacity", opacity);
+	shader.SetUniform1i("u_use_source_alpha", use_source_alpha ? 1 : 0);
 
 	glBindVertexArray(vao);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);

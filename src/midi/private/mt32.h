@@ -62,7 +62,10 @@ public:
 
 	// Fetches the current 20-char LCD content (see
 	// MT32Emu::Service::getDisplayState). `buf` must point to at least 21
-	// bytes. Thread-safe (takes service_mutex).
+	// bytes. Thread-safe (takes service_mutex). Returns whether `buf` was
+	// filled (i.e. the service exists) -- deliberately NOT munt's own
+	// getDisplayState() return value, which actually reports the MIDI
+	// message LED's on/off state, not call success.
 	bool GetDisplayState(char* buf);
 
 private:

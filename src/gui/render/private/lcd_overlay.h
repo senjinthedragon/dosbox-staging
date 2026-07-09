@@ -28,7 +28,15 @@ public:
 	// sources (e.g. the rasterized MT-32 text display) to keep a crisp,
 	// blocky look instead of blurring on upscale; false (bilinear) suits
 	// the higher-resolution Sound Canvas pixel buffer.
-	explicit LcdOverlay(bool use_nearest_filtering = false);
+	//
+	// `use_source_alpha`: when false (default), every pixel renders fully
+	// opaque regardless of its alpha byte -- needed for Sound Canvas,
+	// whose upstream pixel buffer has no meaningful alpha channel at all
+	// (see lcd_overlay.cpp's fragment shader comment). Set true only for
+	// sources that deliberately encode real per-pixel transparency (e.g.
+	// the MT-32 rasterizer's rounded-corner cutout).
+	explicit LcdOverlay(bool use_nearest_filtering = false,
+	                    bool use_source_alpha      = false);
 	~LcdOverlay();
 
 	// prevent copying
@@ -55,6 +63,7 @@ private:
 
 	bool is_initialised        = false;
 	bool use_nearest_filtering = false;
+	bool use_source_alpha      = false;
 
 	Shader shader = {};
 

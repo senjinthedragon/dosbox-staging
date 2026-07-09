@@ -22,12 +22,22 @@
 // Everything else is passed through as ASCII against the font table in
 // mt32_lcd_font.h.
 //
+// Each dot is rendered as a `dot_size_px`-by-`dot_size_px` block, with a
+// fixed 1-pixel gap between every adjacent dot (matching real hardware,
+// where individual dots stay visibly separated even within the same lit
+// block) -- the gap does NOT scale with `dot_size_px`. The returned buffer
+// is already at its final on-screen size; callers should display it at
+// (at most) 1:1 scale, not scale it up further, or the fixed 1-pixel gap
+// will scale too and stop being 1 pixel.
+//
 // Output stride equals width (tightly packed) -- unlike the Sound Canvas
 // overlay's fixed 1024-pixel stride, callers must NOT assume a fixed
 // stride here.
 //
-// Returns false if `buf` is null or empty (all-null).
-bool RasterizeMt32Lcd(const char* buf, std::vector<uint32_t>& out_pixels,
-                      uint32_t& out_width, uint32_t& out_height);
+// Returns false if `buf` is null or empty (all-null), or if `dot_size_px`
+// is 0.
+bool RasterizeMt32Lcd(const char* buf, const uint32_t dot_size_px,
+                      std::vector<uint32_t>& out_pixels, uint32_t& out_width,
+                      uint32_t& out_height);
 
 #endif // DOSBOX_MT32_LCD_RASTERIZER_H

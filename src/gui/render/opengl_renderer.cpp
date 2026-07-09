@@ -515,10 +515,18 @@ void OpenGlRenderer::PresentFrame()
 			uint32_t mt32_width  = 0;
 			uint32_t mt32_height = 0;
 
-			if (RasterizeMt32Lcd(lcd_buf, mt32_pixels, mt32_width, mt32_height)) {
+			const auto dot_size_px = static_cast<uint32_t>(
+			        get_section("mt32")->GetInt("mt32_lcd_dot_size_px"));
+
+			if (RasterizeMt32Lcd(lcd_buf,
+			                     dot_size_px,
+			                     mt32_pixels,
+			                     mt32_width,
+			                     mt32_height)) {
 				if (!mt32_lcd_overlay) {
 					mt32_lcd_overlay = std::make_unique<LcdOverlay>(
-					        /*use_nearest_filtering=*/true);
+					        /*use_nearest_filtering=*/true,
+					        /*use_source_alpha=*/true);
 				}
 
 				const auto opacity_percent = get_section("mt32")->GetInt(

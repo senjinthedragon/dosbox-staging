@@ -424,6 +424,24 @@ static void init_mt32_config_settings(SectionProp& sec_prop)
 	                   DefaultOpacityPercent,
 	                   MinOpacityPercent,
 	                   MaxOpacityPercent));
+
+	constexpr auto DefaultDotSizePx = 3;
+	constexpr auto MinDotSizePx     = 1;
+	constexpr auto MaxDotSizePx     = 10;
+
+	int_prop = sec_prop.AddInt("mt32_lcd_dot_size_px", when_idle, DefaultDotSizePx);
+	int_prop->SetMinMax(MinDotSizePx, MaxDotSizePx);
+	int_prop->SetHelp(format_str(
+	        "Size, in screen pixels, of each individual dot on the emulated LCD's\n"
+	        "dot-matrix display (%d by default). A real MT-32/CM-32L's dots have a\n"
+	        "small visible gap between them even within the same lit block; this is\n"
+	        "always fixed at 1 pixel and doesn't scale with dot size. Larger values\n"
+	        "make the overlay bigger and more legible from a distance; there's no\n"
+	        "single right answer since it depends on your screen resolution and\n"
+	        "viewing distance. Range: %d-%d.",
+	        DefaultDotSizePx,
+	        MinDotSizePx,
+	        MaxDotSizePx));
 }
 
 static void register_mt32_text_messages()
@@ -992,7 +1010,11 @@ bool MidiDeviceMt32::GetDisplayState(char* buf)
 	if (!service) {
 		return false;
 	}
-	return service->getDisplayState(buf, false);
+	// Ignore the return value -- it's the MIDI message LED's on/off
+	// state, not whether `buf` was successfully filled (munt fills it
+	// unconditionally).
+	service->getDisplayState(buf, false);
+	return true;
 }
 
 bool MIDI_GetActiveMt32DisplayState(char* buf)
