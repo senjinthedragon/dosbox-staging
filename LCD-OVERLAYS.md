@@ -49,6 +49,23 @@ per the instructions below.
    this fork's build specifically for the overlay to show up.
 2. Place SC-55 ROMs in `soundcanvas-roms/` per the [upstream Sound Canvas
    docs](website/docs/0.83/manual/sound/sound-devices/sound-canvas.md).
+
+   The plugin looks for each model's ROMs in its own subfolder, not
+   directly in `soundcanvas-roms/`. For `sc55mk2`, that means:
+
+   ```
+   soundcanvas-roms/SC-55mk2-v1.01/rom1.bin
+   soundcanvas-roms/SC-55mk2-v1.01/rom2.bin
+   soundcanvas-roms/SC-55mk2-v1.01/rom_sm.bin
+   soundcanvas-roms/SC-55mk2-v1.01/waverom1.bin
+   soundcanvas-roms/SC-55mk2-v1.01/waverom2.bin
+   ```
+
+   ROMs are identified by checksum, not filename, but they still need
+   to be in the right model subfolder to be found at all - placing
+   them directly in `soundcanvas-roms/` fails with `SOUNDCANVAS: Failed
+   to load 'sc55mk2' Sound Canvas model` even if the files themselves
+   are correct.
 3. In your DOSBox config:
 
    ```ini
