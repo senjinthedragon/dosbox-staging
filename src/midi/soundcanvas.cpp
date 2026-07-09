@@ -15,6 +15,7 @@
 #include "config/setup.h"
 #include "dos/programs.h"
 #include "hardware/pic.h"
+#include "midi.h"
 #include "misc/ansi_code_markup.h"
 #include "misc/std_filesystem.h"
 #include "utils/checks.h"
@@ -22,6 +23,29 @@
 #include "utils/string_utils.h"
 
 CHECK_NARROWING();
+
+// Custom CLAP extension implemented by the Nuked-SC55-CLAP plugin, exposing
+// its emulated LCD status panel as a raw pixel buffer. Not part of the
+// official CLAP extension set, so the ID/ABI is vendored here rather than
+// pulled from a shared header -- see Nuked-SC55-CLAP's
+// src/ext/lcd_framebuffer.h for the authoritative definition this must stay
+// in sync with.
+namespace NukedSc55LcdExt {
+
+constexpr auto ExtensionId = "net.johnnovak.nuked_sc55_clap.lcd_framebuffer/1";
+
+// Pixel format: 0xAABBGGRR (i.e. R in the low byte, not B -- verified against
+// SDL_PIXELFORMAT_BGR888 used by the reference standalone Nuked-SC55 app), one
+// uint32_t per pixel. Row stride (in pixels) is returned separately and may
+// exceed `width` -- callers must use it, not `width`, to compute row offsets.
+struct FramebufferExtension {
+	bool(CLAP_ABI* get_framebuffer)(const clap_plugin_t* plugin,
+	                                uint32_t* out_width, uint32_t* out_height,
+	                                uint32_t* out_row_stride_pixels,
+	                                const uint32_t** out_pixels);
+};
+
+} // namespace NukedSc55LcdExt
 
 namespace SoundCanvas {
 
@@ -232,6 +256,42 @@ static float native_sample_rate_hz_for_model(const SoundCanvas::Model model)
 SoundCanvas::SynthModel MidiDeviceSoundCanvas::GetModel() const
 {
 	return model;
+}
+
+bool MidiDeviceSoundCanvas::GetLcdFramebuffer(uint32_t& width, uint32_t& height,
+                                              uint32_t& row_stride_pixels,
+                                              const uint32_t*& pixels) const
+{
+	if (!clap.plugin) {
+		return false;
+	}
+
+	const auto lcd_ext = static_cast<const NukedSc55LcdExt::FramebufferExtension*>(
+	        clap.plugin->GetExtension(NukedSc55LcdExt::ExtensionId));
+
+	if (!lcd_ext || !lcd_ext->get_framebuffer) {
+		return false;
+	}
+
+	return lcd_ext->get_framebuffer(clap.plugin->GetRawPlugin(),
+	                                &width,
+	                                &height,
+	                                &row_stride_pixels,
+	                                &pixels);
+}
+
+bool MIDI_GetActiveSoundCanvasLcdFramebuffer(uint32_t& width, uint32_t& height,
+                                             uint32_t& row_stride_pixels,
+                                             const uint32_t*& pixels)
+{
+	const auto device = dynamic_cast<MidiDeviceSoundCanvas*>(
+	        MIDI_GetCurrentDevice());
+
+	if (!device) {
+		return false;
+	}
+
+	return device->GetLcdFramebuffer(width, height, row_stride_pixels, pixels);
 }
 
 static SectionProp* get_soundcanvas_section()
@@ -926,6 +986,27 @@ static void init_soundcanvas_config_settings(SectionProp& sec_prop)
 	        "  on:        Filter the output (default).\n"
 	        "  off:       Don't filter the output.\n"
 	        "  <custom>:  Custom filter definition; see 'sb_filter' for details.");
+
+	auto* bool_prop = sec_prop.AddBool("soundcanvas_lcd_overlay", when_idle, false);
+	bool_prop->SetHelp(
+	        "Show the Roland Sound Canvas LCD status panel as a small overlay in\n"
+	        "the top-right corner of the screen ('off' by default). Only supported\n"
+	        "with the OpenGL/shader render backend.");
+
+	constexpr auto DefaultOpacityPercent = 85;
+	constexpr auto MinOpacityPercent     = 0;
+	constexpr auto MaxOpacityPercent     = 100;
+
+	auto* int_prop = sec_prop.AddInt("soundcanvas_lcd_overlay_opacity",
+	                                 when_idle,
+	                                 DefaultOpacityPercent);
+	int_prop->SetMinMax(MinOpacityPercent, MaxOpacityPercent);
+	int_prop->SetHelp(
+	        format_str("Opacity of the LCD overlay as a percentage (%d by default), from %d\n"
+	                   "(invisible) to %d (fully opaque).",
+	                   DefaultOpacityPercent,
+	                   MinOpacityPercent,
+	                   MaxOpacityPercent));
 }
 
 static void register_soundcanvas_text_messages()

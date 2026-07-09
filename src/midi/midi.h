@@ -257,6 +257,18 @@ void MT32_AddConfigSection(const ConfigPtr& conf);
 
 void SOUNDCANVAS_AddConfigSection(const ConfigPtr& conf);
 
+// Fetches the LCD status panel framebuffer from the currently active MIDI
+// device, if it's a Sound Canvas synth exposing one. Pixel format is
+// 0xAABBGGRR (i.e. R in the low byte, not B -- verified against
+// SDL_PIXELFORMAT_BGR888 used by the reference standalone Nuked-SC55 app), one
+// uint32_t per pixel; row stride (in pixels) may exceed `width` -- callers must
+// use it, not `width`, to compute row offsets. Returns false if the active
+// device isn't Sound Canvas or has no LCD. Must only be called from a single
+// consistent thread (the video/render thread), never the audio thread.
+bool MIDI_GetActiveSoundCanvasLcdFramebuffer(uint32_t& width, uint32_t& height,
+                                             uint32_t& row_stride_pixels,
+                                             const uint32_t*& pixels);
+
 void MIDI_AddConfigSection(const ConfigPtr& conf);
 void MIDI_Destroy();
 

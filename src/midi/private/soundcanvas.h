@@ -70,6 +70,16 @@ public:
 
 	SoundCanvas::SynthModel GetModel() const;
 
+	// Fetches the current LCD status panel framebuffer from the active
+	// CLAP plugin, if it exposes one. Row stride (in pixels) may be
+	// larger than `width` -- callers must use it, not `width`, to
+	// compute row offsets into `pixels`. Must only be called from a
+	// single consistent thread (the video/render thread), never the
+	// audio thread.
+	bool GetLcdFramebuffer(uint32_t& width, uint32_t& height,
+	                       uint32_t& row_stride_pixels,
+	                       const uint32_t*& pixels) const;
+
 	void SendMidiMessage(const MidiMessage& msg) override;
 	void SendSysExMessage(uint8_t* sysex, size_t len) override;
 
