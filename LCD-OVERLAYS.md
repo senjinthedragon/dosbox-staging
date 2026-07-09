@@ -148,6 +148,22 @@ Same as upstream - see the main [README](README.md) and
 No new build dependencies; the overlay reuses the existing OpenGL/shader
 infrastructure.
 
+## Support the Developer
+
+I'm a solo hobbyist maintaining this fork in my free time. If the LCD
+overlays add something to your retro gaming setup, consider:
+
+- **[Sponsoring me on GitHub](https://github.com/sponsors/senjinthedragon)**
+- **[Buying me a coffee on Ko-fi](https://ko-fi.com/senjinthedragon)**
+- **Bitcoin:** `bc1qjsaqw6rjcmhv6ywv2a97wfd4zxnae3ncrn8mf9`
+- **Starring this repository** to help others find it.
+
+This supports my work on the LCD overlay fork specifically. DOSBox Staging
+itself is a much larger project built by many people - if you'd also like
+to support the base emulator, see its own
+[Donations](https://github.com/dosbox-staging/dosbox-staging#donations)
+section.
+
 ## Status
 
 This is a hobby fork, not an official DOSBox Staging feature. If you hit
