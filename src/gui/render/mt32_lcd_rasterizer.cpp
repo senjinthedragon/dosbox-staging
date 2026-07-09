@@ -30,7 +30,6 @@ constexpr int GapPx = 1;
 constexpr auto GlyphW       = Mt32LcdFont::GlyphWidth;
 constexpr auto GlyphH       = Mt32LcdFont::GlyphHeight;
 constexpr auto CursorGapRow = GlyphH;
-constexpr auto CursorDotRow = GlyphH + 1;
 constexpr auto CellRows     = GlyphH + 2;
 
 // Approximates the real MT-32/CM-32L's dot-matrix LCD, which shows three
