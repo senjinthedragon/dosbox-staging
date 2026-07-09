@@ -425,6 +425,12 @@ static void init_mt32_config_settings(SectionProp& sec_prop)
 	                   MinOpacityPercent,
 	                   MaxOpacityPercent));
 
+	str_prop = sec_prop.AddString("mt32_lcd_overlay_position", when_idle, "top-right");
+	str_prop->SetValues({"top-right", "top-left", "bottom-right", "bottom-left"});
+	str_prop->SetHelp(
+	        "Which corner of the screen to show the LCD overlay in ('top-right' by\n"
+	        "default).");
+
 	constexpr auto DefaultDotSizePx = 3;
 	constexpr auto MinDotSizePx     = 1;
 	constexpr auto MaxDotSizePx     = 10;

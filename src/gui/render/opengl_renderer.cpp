@@ -5,6 +5,7 @@
 
 #if C_OPENGL
 
+#include "gui/mapper.h"
 #include "gui/private/common.h"
 #include "private/auto_shader_switcher.h"
 #include "private/shader_manager.h"
@@ -219,6 +220,12 @@ bool OpenGlRenderer::InitRenderer()
 	glDisable(GL_DEPTH_TEST);
 
 	shader_pipeline = std::make_unique<ShaderPipeline>();
+
+	MAPPER_AddHandler(ToggleLcdOverlaysVisible,
+	                  SDL_SCANCODE_L,
+	                  PRIMARY_MOD | MMOD2,
+	                  "togglelcd",
+	                  "Toggle LCD");
 
 	return true;
 }
@@ -480,7 +487,8 @@ void OpenGlRenderer::PresentFrame()
 {
 	shader_pipeline->Render(vao);
 
-	if (get_section("soundcanvas")->GetBool("soundcanvas_lcd_overlay")) {
+	if (LcdOverlaysAreVisible() &&
+	    get_section("soundcanvas")->GetBool("soundcanvas_lcd_overlay")) {
 		uint32_t lcd_width         = 0;
 		uint32_t lcd_height        = 0;
 		uint32_t lcd_row_stride_px = 0;
@@ -489,7 +497,13 @@ void OpenGlRenderer::PresentFrame()
 		if (MIDI_GetActiveSoundCanvasLcdFramebuffer(
 		            lcd_width, lcd_height, lcd_row_stride_px, lcd_pixels)) {
 			if (!lcd_overlay) {
-				lcd_overlay = std::make_unique<LcdOverlay>();
+				const auto position = ParseLcdOverlayPosition(
+				        get_section("soundcanvas")
+				                ->GetString("soundcanvas_lcd_overlay_position"));
+				lcd_overlay = std::make_unique<LcdOverlay>(
+				        /*use_nearest_filtering=*/false,
+				        /*use_source_alpha=*/false,
+				        position);
 			}
 
 			const auto opacity_percent =
@@ -507,7 +521,8 @@ void OpenGlRenderer::PresentFrame()
 	}
 
 #if C_MT32EMU
-	if (get_section("mt32")->GetBool("mt32_lcd_overlay")) {
+	if (LcdOverlaysAreVisible() &&
+	    get_section("mt32")->GetBool("mt32_lcd_overlay")) {
 		char lcd_buf[21] = {};
 
 		if (MIDI_GetActiveMt32DisplayState(lcd_buf)) {
@@ -524,9 +539,13 @@ void OpenGlRenderer::PresentFrame()
 			                     mt32_width,
 			                     mt32_height)) {
 				if (!mt32_lcd_overlay) {
+					const auto position = ParseLcdOverlayPosition(
+					        get_section("mt32")->GetString(
+					                "mt32_lcd_overlay_position"));
 					mt32_lcd_overlay = std::make_unique<LcdOverlay>(
 					        /*use_nearest_filtering=*/true,
-					        /*use_source_alpha=*/true);
+					        /*use_source_alpha=*/true,
+					        position);
 				}
 
 				const auto opacity_percent = get_section("mt32")->GetInt(

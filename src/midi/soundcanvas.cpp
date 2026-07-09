@@ -1007,6 +1007,14 @@ static void init_soundcanvas_config_settings(SectionProp& sec_prop)
 	                   DefaultOpacityPercent,
 	                   MinOpacityPercent,
 	                   MaxOpacityPercent));
+
+	str_prop = sec_prop.AddString("soundcanvas_lcd_overlay_position",
+	                              when_idle,
+	                              "top-right");
+	str_prop->SetValues({"top-right", "top-left", "bottom-right", "bottom-left"});
+	str_prop->SetHelp(
+	        "Which corner of the screen to show the LCD overlay in ('top-right' by\n"
+	        "default).");
 }
 
 static void register_soundcanvas_text_messages()

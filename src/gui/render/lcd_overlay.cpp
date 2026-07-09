@@ -64,11 +64,42 @@ void main()
 )";
 // clang-format on
 
+bool lcd_overlays_visible = true;
+
 } // namespace
 
-LcdOverlay::LcdOverlay(bool _use_nearest_filtering, bool _use_source_alpha)
+bool LcdOverlaysAreVisible()
+{
+	return lcd_overlays_visible;
+}
+
+void ToggleLcdOverlaysVisible(const bool pressed)
+{
+	if (!pressed) {
+		return;
+	}
+	lcd_overlays_visible = !lcd_overlays_visible;
+}
+
+LcdOverlayPosition ParseLcdOverlayPosition(const std::string_view value)
+{
+	if (value == "top-left") {
+		return LcdOverlayPosition::TopLeft;
+	}
+	if (value == "bottom-right") {
+		return LcdOverlayPosition::BottomRight;
+	}
+	if (value == "bottom-left") {
+		return LcdOverlayPosition::BottomLeft;
+	}
+	return LcdOverlayPosition::TopRight;
+}
+
+LcdOverlay::LcdOverlay(bool _use_nearest_filtering, bool _use_source_alpha,
+                       LcdOverlayPosition _position)
         : use_nearest_filtering(_use_nearest_filtering),
-          use_source_alpha(_use_source_alpha)
+          use_source_alpha(_use_source_alpha),
+          position(_position)
 {}
 
 LcdOverlay::~LcdOverlay()
@@ -211,9 +242,17 @@ void LcdOverlay::UpdateVertexData(const DosBox::Rect& canvas_size_px)
 	// boundary.
 	const auto margin_px = std::round(canvas_w * OverlayMarginFraction);
 
-	const auto left_px   = std::round(canvas_w - margin_px - overlay_w_px);
-	const auto right_px  = left_px + overlay_w_px;
-	const auto top_px    = margin_px;
+	const bool is_left = (position == LcdOverlayPosition::TopLeft ||
+	                      position == LcdOverlayPosition::BottomLeft);
+	const bool is_top  = (position == LcdOverlayPosition::TopLeft ||
+	                      position == LcdOverlayPosition::TopRight);
+
+	const auto left_px = is_left ? margin_px
+	                             : std::round(canvas_w - margin_px - overlay_w_px);
+	const auto right_px = left_px + overlay_w_px;
+
+	const auto top_px = is_top ? margin_px
+	                           : std::round(canvas_h - margin_px - overlay_h_px);
 	const auto bottom_px = top_px + overlay_h_px;
 
 	// Pixel space is y-down with origin top-left; NDC is y-up with origin
