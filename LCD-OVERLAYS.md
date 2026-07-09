@@ -15,14 +15,11 @@ Currently implemented:
   [johnnovak/Nuked-SC55-CLAP](https://github.com/johnnovak/Nuked-SC55-CLAP)
   adding a custom CLAP extension that exposes the emulated LCD as a raw pixel
   buffer.
-
-Planned:
-
-- **Roland MT-32 / CM-32L** — munt already emulates the MT-32's full LCD
-  content (patch name plus the per-channel partial-usage bargraph, via
-  `Synth::getDisplayState()`), but this fork doesn't render it yet. Text-mode
-  rather than pixel-buffer, so a different (smaller) implementation than the
-  Sound Canvas one — see the "MT-32" section below for the current state.
+- **Roland MT-32 / CM-32L** — munt (dosbox-staging's built-in `mididevice =
+  mt32` backend, not a CLAP plugin) already emulates the full 20-character
+  LCD content, including the per-channel partial-usage bargraph. Rasterized
+  each frame into a small dot-matrix bitmap using a hand-authored font and
+  rendered through the same overlay machinery as Sound Canvas.
 
 ## Setup
 
@@ -46,6 +43,24 @@ Planned:
    soundcanvas_lcd_overlay_opacity = 85
    ```
 
+### MT-32 / CM-32L
+
+1. Place MT-32/CM-32L ROMs in `mt32-roms/` per the [upstream MT-32
+   docs](website/docs/0.83/manual/sound/sound-devices/) (ROMs are identified
+   by checksum, not filename).
+2. In your DOSBox config:
+
+   ```ini
+   [midi]
+   mididevice = mt32
+
+   [mt32]
+   mt32_lcd_overlay = on
+   mt32_lcd_overlay_opacity = 85
+   ```
+
+No CLAP plugin needed — munt is built directly into dosbox-staging.
+
 Currently only supported with the OpenGL/shader render backend
 (`output = opengl` or similar) — `SdlRenderer` has no equivalent per-frame
 hook yet.
@@ -62,6 +77,20 @@ pixel data is pulled out via a custom CLAP extension
 into DOSBox's own OpenGL render output, right after the shader pipeline's
 final pass — see `src/gui/render/lcd_overlay.{h,cpp}` and the call site in
 `OpenGlRenderer::PresentFrame()`.
+
+MT-32 is simpler: munt runs directly inside dosbox-staging (no plugin
+boundary to cross), and `MT32Emu::Service::getDisplayState()` already
+returns the current 20-character LCD text each frame — including two
+reserved non-ASCII bytes real hardware uses for its per-channel bargraph
+(`0x01` = "part active" solid block, `0x02` = a duplicate pipe glyph). This
+gets rasterized into a small RGBA bitmap using a hand-authored 5x7
+dot-matrix font (`src/gui/render/private/mt32_lcd_font.h` — original
+letterforms, not derived from munt's own LCD4Linux-based reference font, to
+avoid that attribution) and fed through the same `LcdOverlay` class used for
+Sound Canvas, just with nearest-neighbour texture filtering instead of
+bilinear so the low-resolution text stays crisp rather than blurring. See
+`src/gui/render/mt32_lcd_rasterizer.{h,cpp}` and `MidiDeviceMt32::
+GetDisplayState()` in `src/midi/mt32.cpp`.
 
 ## Building
 
