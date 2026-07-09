@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 #include "utils/checks.h"
 
@@ -175,24 +176,56 @@ void LcdOverlay::UpdateVertexData(const DosBox::Rect& canvas_size_px)
 	const auto canvas_w = canvas_size_px.w;
 	const auto canvas_h = canvas_size_px.h;
 
-	// Aspect ratio comes from whatever content was last uploaded via
-	// UpdateTexture() (called before this in Render()) -- not hardcoded,
-	// since this class serves multiple LCD content sources with very
-	// different native aspect ratios (e.g. Sound Canvas's ~2.77:1 panel vs.
-	// MT-32's ~20:1 single-line text strip).
-	const auto content_aspect_ratio = static_cast<float>(texture_width) /
-	                                  static_cast<float>(texture_height);
+	const auto target_w_px = std::min(canvas_w * OverlayWidthFraction,
+	                                  OverlayMaxWidthPx);
 
-	const auto overlay_w_px = std::min(canvas_w * OverlayWidthFraction,
-	                                   OverlayMaxWidthPx);
-	const auto overlay_h_px = overlay_w_px / content_aspect_ratio;
+	float overlay_w_px = 0.0f;
+	float overlay_h_px = 0.0f;
 
-	const auto margin_px = canvas_w * OverlayMarginFraction;
+	if (use_nearest_filtering) {
+		// Scale by an integer multiple of the source texture's size so
+		// every source pixel maps to a uniform whole-pixel block on
+		// screen -- the same principle as DOSBox's own
+		// `integer_scaling` setting for its main canvas. A non-integer
+		// scale factor causes GL_NEAREST to duplicate some source pixel
+		// columns/rows more than others (e.g. 3x here, 4x there), which
+		// reads as blur/unevenness even though no texture interpolation
+		// is actually happening -- most visible on small, fine-detail
+		// sources like the rasterized MT-32 text, where each source
+		// pixel is only a few screen pixels wide to begin with.
+		//
+		// Only applies to nearest-filtered content: bilinear-filtered
+		// content (e.g. Sound Canvas's much higher-resolution panel,
+		// which gets downscaled to fit rather than upscaled) already
+		// looks smooth at any ratio, and forcing an integer scale there
+		// would force it to its full native size whenever that's larger
+		// than the target width.
+		const auto pixel_scale = std::max(
+		        1,
+		        static_cast<int>(target_w_px /
+		                         static_cast<float>(texture_width)));
 
-	const auto left_px   = canvas_w - margin_px - overlay_w_px;
-	const auto right_px  = canvas_w - margin_px;
+		overlay_w_px = static_cast<float>(texture_width) *
+		               static_cast<float>(pixel_scale);
+		overlay_h_px = static_cast<float>(texture_height) *
+		               static_cast<float>(pixel_scale);
+	} else {
+		const auto content_aspect_ratio = static_cast<float>(texture_width) /
+		                                  static_cast<float>(texture_height);
+
+		overlay_w_px = target_w_px;
+		overlay_h_px = overlay_w_px / content_aspect_ratio;
+	}
+
+	// Round the margin and position to whole pixels too, so the overlay's
+	// on-screen origin -- not just its size -- lands on an exact pixel
+	// boundary.
+	const auto margin_px = std::round(canvas_w * OverlayMarginFraction);
+
+	const auto left_px   = std::round(canvas_w - margin_px - overlay_w_px);
+	const auto right_px  = left_px + overlay_w_px;
 	const auto top_px    = margin_px;
-	const auto bottom_px = margin_px + overlay_h_px;
+	const auto bottom_px = top_px + overlay_h_px;
 
 	// Pixel space is y-down with origin top-left; NDC is y-up with origin
 	// centre.
