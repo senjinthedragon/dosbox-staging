@@ -8,6 +8,7 @@ target_sources(dosboxcommon PRIVATE
   render/auto_shader_switcher.cpp
   render/deinterlacer.cpp
   render/lcd_overlay.cpp
+  render/mt32_lcd_rasterizer.cpp
   render/opengl_renderer.cpp
   render/render.cpp
   render/scaler/scalers.cpp

@@ -153,7 +153,8 @@ private:
 
 	std::unique_ptr<ShaderPipeline> shader_pipeline = {};
 
-	std::unique_ptr<LcdOverlay> lcd_overlay = {};
+	std::unique_ptr<LcdOverlay> lcd_overlay      = {};
+	std::unique_ptr<LcdOverlay> mt32_lcd_overlay = {};
 };
 
 #endif // C_OPENGL

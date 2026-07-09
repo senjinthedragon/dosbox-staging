@@ -15,6 +15,7 @@
 #include "midi/midi.h"
 #include "misc/support.h"
 #include "misc/video.h"
+#include "mt32_lcd_rasterizer.h"
 #include "utils/checks.h"
 #include "utils/math_utils.h"
 
@@ -504,6 +505,39 @@ void OpenGlRenderer::PresentFrame()
 			                    opacity);
 		}
 	}
+
+#if C_MT32EMU
+	if (get_section("mt32")->GetBool("mt32_lcd_overlay")) {
+		char lcd_buf[21] = {};
+
+		if (MIDI_GetActiveMt32DisplayState(lcd_buf)) {
+			std::vector<uint32_t> mt32_pixels;
+			uint32_t mt32_width  = 0;
+			uint32_t mt32_height = 0;
+
+			if (RasterizeMt32Lcd(lcd_buf, mt32_pixels, mt32_width, mt32_height)) {
+				if (!mt32_lcd_overlay) {
+					mt32_lcd_overlay = std::make_unique<LcdOverlay>(
+					        /*use_nearest_filtering=*/true);
+				}
+
+				const auto opacity_percent = get_section("mt32")->GetInt(
+				        "mt32_lcd_overlay_opacity");
+				const auto opacity = static_cast<float>(
+				                             opacity_percent) /
+				                     100.0f;
+
+				mt32_lcd_overlay->Render(mt32_pixels.data(),
+				                         mt32_width,
+				                         mt32_height,
+				                         mt32_width, // stride
+				                                     // == width
+				                         GetCanvasSizeInPixels(),
+				                         opacity);
+			}
+		}
+	}
+#endif
 
 	// Optionally capture frame
 	if (CAPTURE_IsCapturingPostRenderImage()) {
