@@ -28,6 +28,18 @@ public:
 
 	void Process(float** audio_out, const int num_frames, EventList& event_list);
 
+	// Looks up a CLAP extension by ID, returning nullptr if the plugin
+	// doesn't implement it. See clap/ext/*.h for standard extension IDs;
+	// plugins may also expose custom/vendor extensions under their own IDs.
+	const void* GetExtension(const char* id) const;
+
+	// Needed by callers of GetExtension(), as extension function pointers
+	// take the raw `clap_plugin_t*` as their first argument.
+	const clap_plugin_t* GetRawPlugin() const
+	{
+		return plugin;
+	}
+
 	// prevent copying
 	Plugin(const Plugin&) = delete;
 	// prevent assignment

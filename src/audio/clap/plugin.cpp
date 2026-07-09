@@ -7,9 +7,9 @@
 
 #include "clap/all.h"
 
-#include "utils/checks.h"
 #include "event_list.h"
 #include "library.h"
+#include "utils/checks.h"
 
 CHECK_NARROWING();
 
@@ -75,6 +75,15 @@ void Plugin::Process(float** audio_out, const int num_frames, EventList& event_l
 	process.out_events = event_list.GetOutputEvents();
 
 	plugin->process(plugin, &process);
+}
+
+const void* Plugin::GetExtension(const char* id) const
+{
+	assert(plugin);
+	if (!plugin->get_extension) {
+		return nullptr;
+	}
+	return plugin->get_extension(plugin, id);
 }
 
 } // namespace Clap
