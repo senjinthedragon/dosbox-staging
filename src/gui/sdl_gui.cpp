@@ -272,105 +272,36 @@ void GFX_RequestExit(const bool pressed)
 	}
 }
 
-static bool is_unpause_event(const SDL_Event event, const KeyPressState unpause_key)
-{
-	if (event.type != SDL_EVENT_KEY_DOWN) {
-		return false;
-	}
-
-	if (event.key.key == unpause_key.key) {
-		// These are the only mods we're going to care about.
-		// Others mods include caps lock and num lock which we should not look at.
-		constexpr SDL_Keymod ModMask = SDL_Keymod(SDL_KMOD_CTRL | SDL_KMOD_SHIFT |
-		                                          SDL_KMOD_ALT | SDL_KMOD_GUI);
-		const auto unpause_mod = SDL_Keymod(unpause_key.mod & ModMask);
-		if ((event.key.mod & unpause_mod) == unpause_mod) {
-			return true;
-		}
-	}
-
-	// Also check previously hard-coded Alt+Pause on Windows/Linux
-	// and Command+P on Mac to ensure we don't have regressions.
-	#if defined(MACOSX)
-	constexpr SDL_Keymod DefaultMod  = SDL_KMOD_GUI;
-	constexpr SDL_Keycode DefaultKey = SDLK_P;
-	#else
-	constexpr SDL_Keymod DefaultMod  = SDL_KMOD_ALT;
-	constexpr SDL_Keycode DefaultKey = SDLK_PAUSE;
-	#endif
-	return event.key.key == DefaultKey && (event.key.mod & DefaultMod);
-}
-
+// Thin wrapper around the FSM. The state machine + `paused_tick()` in
+// `dosbox.cpp` own the actual pause loop; here we just translate the
+// hotkey press into the right transition.
+//
 [[maybe_unused]] static void pause_emulation(bool pressed)
 {
 	if (!pressed) {
 		return;
 	}
 
-	// Bit of a hack but this is the key that was used to pause so let's
-	// also check it to unpause. We should really be relying on
-	// MAPPER_CheckEvent() but that is not possible inside this janky pause
-	// loop.
-	// TODO: In the future, re-work pause logic so we use the main event
-	// loop all the time.
-	const auto unpause_key = MAPPER_GetLastKeyPressed();
-
-	const auto inkeymod = SDL_GetModState();
-
-	sdl.is_paused = true;
-	TITLEBAR_RefreshTitle();
-
-	SDL_Event event;
-
-	while (SDL_PollEvent(&event)) {
-		// flush event queue.
+	// Toggle on the requested state, not the actual one. During the
+	// pending fade-out window `DOSBOX_IsPaused()` is still false, so
+	// keying off it would map a second press to another (no-op) pause
+	// request. Keying off the request lets a quick second press cancel
+	// the pause during the fade, and guarantees the hotkey can always
+	// exit a pending pause even if the fade never completes (e.g. the
+	// mixer thread wedged on a stalled audio device).
+	if (DOSBOX_IsPauseRequested()) {
+		DOSBOX_RequestUserResume();
+	} else {
+		DOSBOX_RequestUserPause();
 	}
 
-	// Prevent the mixer from running while in our pause loop
-	// Muting is not ideal for some sound devices such as GUS that loop
-	// samples This also saves CPU time by not rendering samples we're not
-	// going to play anyway
-	MIXER_LockMixerThread();
-
-	// NOTE: This is one of the few places where we use SDL key codes with
-	// SDL 2.0, rather than scan codes. Is that the correct behavior?
-	while (sdl.is_paused && !DOSBOX_IsShutdownRequested()) {
-		// since we're not polling, CPU usage drops to 0.
-		SDL_WaitEvent(&event);
-
-		switch (event.type) {
-		case SDL_EVENT_QUIT: GFX_RequestExit(true); break;
-
-		case SDL_EVENT_WINDOW_RESTORED:
-			// We may need to re-create a texture and more
-			GFX_ResetScreen();
-			break;
-
-		case SDL_EVENT_KEY_DOWN:
-			if (is_unpause_event(event, unpause_key)) {
-				const auto outkeymod = event.key.mod;
-				if (inkeymod != outkeymod) {
-					KEYBOARD_ClrBuffer();
-					MAPPER_LosingFocus();
-					// Not perfect if the pressed Alt key is
-					// switched, but then we have to insert
-					// the keys into the mapper or
-					// create/rewrite the event and push it.
-					// Which is tricky due to possible use
-					// of scancodes.
-				}
-				sdl.is_paused = false;
-				TITLEBAR_RefreshTitle();
-				break;
-			}
-		}
-	}
-	MIXER_UnlockMixerThread();
+	// Titlebar refresh happens inside the pause FSM on the
+	// `Paused`/`Running` transition.
 }
 
 bool GFX_IsPaused()
 {
-	return sdl.is_paused;
+	return DOSBOX_IsPaused();
 }
 
 void GFX_Stop()
@@ -390,8 +321,32 @@ void GFX_ResetScreen()
 
 	CPU_ResetAutoAdjust();
 
+	// The callback's `update_viewport()` may have triggered an auto-shader
+	// switch (e.g. resize crossed the scan-doubling threshold while the
+	// mapper was open). Push the new shader's `force_single_scan` into
+	// `vga.draw.scan_doubling_allowed` here so the `VGA_SetupDrawing()` call
+	// below sees it, otherwise `render.src.height` will stay wrong.
+	//
+	// This matters even while paused: `RENDER_RescaleLastFrame()` below reads
+	// `render.src.height` as its destination height for the height
+	// doubling/halving of the last latched frame. Stale height will mean
+	// stride mismatch, resulting in garbage output.
+	RENDER_SetScanAndPixelDoubling();
+
 	VGA_SetupDrawing(0);
 	GFX_Start();
+
+	// While paused, we are not producing fresh frames, so the just recreated
+	// renderer would draw a blank or stale stretched framebuffer until
+	// resume. Drive a synthetic rescale of the latched last completed source
+	// frame at the new dimensions, then present immediately so the held frame
+	// shows correctly after viewport dimension updates (resizing the window,
+	// fullscreen/windowed toggle, etc.)
+	//
+	if (DOSBOX_IsPaused()) {
+		RENDER_RescaleLastFrame();
+		GFX_MaybePresentFrame();
+	}
 }
 
 static bool is_vsync_enabled()
@@ -1665,26 +1620,57 @@ static void set_keyboard_capture()
 	}
 }
 
-static void apply_active_settings()
+// Window-inactive coordinator. Single entry point for everything that
+// should happen when the host window loses focus.
+static void on_window_inactive()
 {
+	MOUSE_NotifyWindowActive(false);
+
+	if (sdl.mute_when_inactive) {
+		// No-op if the user has manually muted
+		MIXER_RequestAutoMute();
+	}
+	if (sdl.pause_when_inactive) {
+		KEYBOARD_ClrBuffer();
+		DOSBOX_RequestAutoPause();
+	}
+}
+
+// Window-active coordinator.
+//
+// `focus_gained` is true for the FOCUS_GAINED SDL window event and false for
+// WINDOW_RESTORED" and WINDOW_EXPOSED. Only FOCUS_GAINED re-applies host-side
+// state (keyboard grab, mouse-active, and auto-unmute).
+//
+// Pause auto-resume runs on all three events, so a minimized/uncovered window
+// comes back up.
+//
+static void on_window_active(const bool focus_gained)
+{
+	if (sdl.pause_when_inactive) {
+		DOSBOX_RequestAutoResume();
+
+		// ALT can stick on focus loss -- `paused_tick` doesn't
+		// process key events normally, so release on the "user is
+		// back" edge regardless of which active-event got us here.
+		KEYBOARD_AddKey(KBD_leftalt, false);
+		KEYBOARD_AddKey(KBD_rightalt, false);
+	}
+	if (!focus_gained) {
+		return;
+	}
+
 	MOUSE_NotifyWindowActive(true);
 
-	if (sdl.mute_when_inactive && !MIXER_IsManuallyMuted()) {
-		MIXER_Unmute();
+	if (sdl.mute_when_inactive) {
+		// No-op if the user has manually muted -- the mute FSM
+		// preserves UserMuted across focus changes.
+		MIXER_RequestAutoUnmute();
 	}
 
 	// At least on some platforms grabbing the keyboard has to be repeated
 	// each time we regain focus
 	set_keyboard_capture();
-}
-
-static void apply_inactive_settings()
-{
-	MOUSE_NotifyWindowActive(false);
-
-	if (sdl.mute_when_inactive) {
-		MIXER_Mute();
-	}
 }
 
 static void restart_hotkey_handler([[maybe_unused]] bool pressed)
@@ -1963,7 +1949,8 @@ void GFX_InitAndStartGui()
 	set_minimum_window_size();
 
 	// Assume focus on startup
-	apply_active_settings();
+	constexpr auto FocusGained = true;
+	on_window_active(FocusGained);
 
 	RENDER_SetShaderWithFallback();
 
@@ -2169,75 +2156,10 @@ int GFX_GetUserSdlEventId(DosBoxSdlEvent event)
 	return sdl.start_event_id + enum_val(event);
 }
 
-static void handle_pause_when_inactive(const SDL_Event& event)
-{
-	if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
-	    event.type == SDL_EVENT_WINDOW_MINIMIZED) {
-		// Window has lost focus, pause the emulator. This is similar to
-		// what PauseDOSBox() does, but the exit criteria is different.
-		// Instead of waiting for the user to hit Alt+Break, we wait for
-		// the window to regain window or input focus.
-		//
-		apply_inactive_settings();
-
-		KEYBOARD_ClrBuffer();
-
-		sdl.is_paused = true;
-		TITLEBAR_RefreshTitle();
-
-		// Prevent the mixer from running while in our pause loop.
-		// Muting is not ideal for some sound devices such as GUS that
-		// loop samples. This also saves CPU time by not rendering
-		// samples we're not going to play anyway.
-		MIXER_LockMixerThread();
-
-		SDL_Event ev;
-
-		while (sdl.is_paused && !DOSBOX_IsShutdownRequested()) {
-			// WaitEvent() waits for an event rather than
-			// polling, so CPU usage drops to zero.
-			SDL_WaitEvent(&ev);
-
-			switch (ev.type) {
-			case SDL_EVENT_QUIT: GFX_RequestExit(true); break;
-			case SDL_EVENT_WINDOW_FOCUS_LOST:
-			case SDL_EVENT_WINDOW_MINIMIZED:
-			case SDL_EVENT_WINDOW_FOCUS_GAINED:
-			case SDL_EVENT_WINDOW_RESTORED:
-			case SDL_EVENT_WINDOW_EXPOSED: {
-				const auto we = ev.type;
-
-				if (we == SDL_EVENT_WINDOW_FOCUS_GAINED ||
-				    we == SDL_EVENT_WINDOW_RESTORED ||
-				    we == SDL_EVENT_WINDOW_EXPOSED) {
-					sdl.is_paused = false;
-					TITLEBAR_RefreshTitle();
-
-					if (we == SDL_EVENT_WINDOW_FOCUS_GAINED) {
-						sdl.is_paused = false;
-						apply_active_settings();
-					}
-				}
-
-				// Release ALT keys, otherwise ALT can stick and cause problems.
-				KEYBOARD_AddKey(KBD_leftalt, false);
-				KEYBOARD_AddKey(KBD_rightalt, false);
-
-				if (we == SDL_EVENT_WINDOW_RESTORED) {
-					// We may need to re-create a texture and more.
-					GFX_ResetScreen();
-				}
-			} break;
-			}
-		}
-		MIXER_UnlockMixerThread();
-	}
-}
-
 static bool handle_sdl_windowevent(const SDL_Event& event)
 {
 	switch (event.type) {
-	case SDL_EVENT_WINDOW_RESTORED:
+	case SDL_EVENT_WINDOW_RESTORED: {
 		log_window_event("SDL: Window has been restored");
 
 		// We may need to re-create a texture and more on Android.
@@ -2255,7 +2177,11 @@ static bool handle_sdl_windowevent(const SDL_Event& event)
 		}
 #endif
 		focus_input();
+
+		constexpr auto FocusGained = false;
+		on_window_active(FocusGained);
 		return true;
+	}
 
 	case SDL_EVENT_WINDOW_RESIZED: {
 		// Window dimensions in logical coordinates
@@ -2293,11 +2219,9 @@ static bool handle_sdl_windowevent(const SDL_Event& event)
 
 	case SDL_EVENT_WINDOW_FOCUS_GAINED:
 		log_window_event("SDL: Window has gained keyboard focus");
-
-		apply_active_settings();
 		[[fallthrough]];
 
-	case SDL_EVENT_WINDOW_EXPOSED:
+	case SDL_EVENT_WINDOW_EXPOSED: {
 		log_window_event("SDL: Window has been exposed and should be redrawn");
 
 		// TODO: below is not consistently true :( seems incorrect on
@@ -2309,17 +2233,25 @@ static bool handle_sdl_windowevent(const SDL_Event& event)
 		// Framebuffer); therefore we rely on the FOCUS_GAINED event to
 		// catch window startup and size toggles.
 
+		const bool focus_gained = (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED);
+		on_window_active(focus_gained);
+
 		if (sdl.draw.callback) {
 			sdl.draw.callback(GFX_CallbackRedraw);
 		}
 		focus_input();
 		return true;
+	}
 
 	case SDL_EVENT_WINDOW_FOCUS_LOST:
 		log_window_event("SDL: Window has lost keyboard focus");
 
-		apply_inactive_settings();
+		// `GFX_LosingFocus()` deactivates mapper events, which can
+		// enqueue key-up scancodes; `on_window_inactive()`'s
+		// `KEYBOARD_ClrBuffer` must run after that so pause starts
+		// with an empty keyboard buffer.
 		GFX_LosingFocus();
+		on_window_inactive();
 		return false;
 
 	case SDL_EVENT_WINDOW_MOUSE_ENTER:
@@ -2407,7 +2339,7 @@ static bool handle_sdl_windowevent(const SDL_Event& event)
 	case SDL_EVENT_WINDOW_MINIMIZED:
 		log_window_event("SDL: Window has been minimized");
 
-		apply_inactive_settings();
+		on_window_inactive();
 		return false;
 
 	case SDL_EVENT_WINDOW_MAXIMIZED:
@@ -2424,9 +2356,9 @@ static bool handle_sdl_windowevent(const SDL_Event& event)
 	// case SDL_WINDOWEVENT_TAKE_FOCUS:
 	// 	log_window_event("SDL: Window is being offered a focus");
 
-	// 	focus_input();
-	// 	apply_active_settings();
-	// 	return true;
+		// 	focus_input();
+		// 	on_window_active(/* focus_gained = */ true);
+		// 	return true;
 
 	case SDL_EVENT_WINDOW_HIT_TEST:
 		log_window_event(
@@ -2575,13 +2507,9 @@ bool GFX_PollAndHandleEvents()
 		}
 
 		if (is_window_event(event)) {
-			auto handling_finished = handle_sdl_windowevent(event);
-			if (handling_finished) {
+			if (handle_sdl_windowevent(event)) {
 				continue;
 			}
-			if (sdl.pause_when_inactive) {
-				handle_pause_when_inactive(event);
-			}			
 		}
 
 		switch(event.type) {

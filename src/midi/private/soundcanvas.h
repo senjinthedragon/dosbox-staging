@@ -5,9 +5,11 @@
 #define DOSBOX_SOUNDCANVAS_H
 
 #include "midi_device.h"
+#include "synth_render_pauser.h"
 
 #include <memory>
 #include <optional>
+#include <thread>
 
 #include "audio/clap/event_list.h"
 #include "audio/clap/plugin.h"
@@ -83,6 +85,9 @@ public:
 	void SendMidiMessage(const MidiMessage& msg) override;
 	void SendSysExMessage(uint8_t* sysex, size_t len) override;
 
+	void Pause() override;
+	void Resume() override;
+
 private:
 	void MixerCallback(const int requested_audio_frames);
 	void ProcessWorkFromFifo();
@@ -106,6 +111,9 @@ private:
 	} clap = {};
 
 	std::thread renderer = {};
+
+	// Parks the renderer thread during a DOSBox pause.
+	SynthRenderPauser pauser = {};
 
 	SoundCanvas::SynthModel model = {};
 
